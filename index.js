@@ -7,19 +7,22 @@ const PORT = process.env.PORT || 4000;
 
 app.use(cors());
 
+// Proxy .m3u8 files and rewrite .ts URLs to go through the proxy
 app.get("/stream/:cameraId", async (req, res) => {
   const { cameraId } = req.params;
   const streamUrl = `http://18.220.202.145/hls/${cameraId}.m3u8`;
 
   try {
     const response = await fetch(streamUrl);
-    if (!response.ok) return res.status(502).json({ error: "Failed to fetch stream" });
+
+    if (!response.ok) {
+      return res.status(502).json({ error: "Failed to fetch stream" });
+    }
 
     const m3u8Body = await response.text();
 
-    const rewrittenM3u8 = m3u8Body
-      .replace(/https?:\/\/[^\/]+\/hls\/([a-zA-Z0-9_/-]+\.ts)/g, `/hls/$1`)
-      .replace(/([a-zA-Z0-9_/-]+\.ts)/g, `/hls/$1`);
+    // Rewrite .ts segment paths to go through the proxy
+    const rewrittenM3u8 = m3u8Body.replace(/([a-zA-Z0-9_-]+\.ts)/g, `/hls/$1`);
 
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
@@ -31,13 +34,17 @@ app.get("/stream/:cameraId", async (req, res) => {
   }
 });
 
-app.get("/hls/*", async (req, res) => {
-  const segmentPath = req.params[0];
-  const segmentUrl = `http://18.220.202.145/hls/${segmentPath}`;
+// Proxy .ts segment files
+app.get("/hls/:segment", async (req, res) => {
+  const { segment } = req.params;
+  const segmentUrl = `http://18.220.202.145/hls/${segment}`;
 
   try {
     const response = await fetch(segmentUrl);
-    if (!response.ok) return res.status(502).json({ error: "Failed to fetch TS segment" });
+
+    if (!response.ok) {
+      return res.status(502).json({ error: "Failed to fetch TS segment" });
+    }
 
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Content-Type", "video/MP2T");
